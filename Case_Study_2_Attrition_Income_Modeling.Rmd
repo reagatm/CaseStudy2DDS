@@ -1,0 +1,161 @@
+---
+title: "Attrition & Income Modeling For Frito Lay"
+output: html_document
+---
+
+**A video presentation of our finding can be seen at: https://www.youtube.com/watch?v=VKtVJfnjAtY&feature=youtu.be**
+ 
+**Good Afternoon, Mr. CEO and Mr. CFO,**
+
+**As consultants for Frito Lay, you have asked the DDSAnalytics Data Science Team to conduct data analysis to identify factors that lead to retention. To do this we needed to identify the top three factors that lead to employee turnover. You also wanted to know about any job role specific trends that may exist based on the data set provided.** 
+
+**Overall, we need to produce two models: one to classify employee retention and one to predict monthly income. In addition we will provide some insight into some job role specific trends. **
+
+**The data you provided us is an 870 observation data set with each observation classified as "no attrition" or "yes attrition", along with 34 possible explanatory variables that may or may not influence attrition.** 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyr)
+library(plyr)
+library(dplyr)
+library(tidyverse)
+library(ggthemes)
+library(plotly)
+library(GGally)
+library(caret)
+library(class)
+library(e1071)
+library(mice)
+library(VIM)
+library(ggmap)
+library(maps)
+library(mapdata)
+library(sp)
+library(maptools)
+library(readr)
+library(corrplot)
+
+attrition = read.csv(file = "/Users/reagan/Case_Study_2.csv", header = TRUE, sep = ",")
+attrition_NA = read.csv(file = "/Users/reagan/Case_Study_2_No_Attrition.csv", header = TRUE, sep = ",")
+attrition_NS = read.csv(file = "/Users/reagan/Case_Study_2_No_Salary.csv", header = TRUE, sep = ",")
+```
+
+**To look at which factors contribute the most to employee turnover we can look at ta correlation matrix to determine which factors are the highest correlated factors with attrition. For this plot we can only look at numerical variables and we have to code "Yes" attrition into a 1 and "No" Attrition into a 2. It is also a great way to see what other explanatory variables in the data are highly correlated with each other.**
+```{r}
+set.seed(33)
+
+attritionData$AttritionN <- as.character(attritionData$Attrition)
+attritionData$AttritionN <- revalue(attritionData$AttritionN, c("Yes"="1"))
+attritionData$AttritionN <- revalue(attritionData$AttritionN, c("No"="2"))
+attritionData$Attrition2 <- as.integer(attritionData$AttritionN)
+attritionData
+
+df <- attritionData %>% keep(is.numeric)
+df.cor = cor(df)
+corrplot(df.cor)
+```
+**Based off of the correlation plot, we can see that Attrition is not highly correlated with any of the variables but shows slight correlation with Age, Job Involvement, Job Level, Job Satisfaction, Monthly Income, Stock Option Level, Total Working Years, Years At Company, Years in Current Role, and Years with Current Manager.**
+
+**It is important to note some other highly correlated explanatory variables, such as: Total Working Years and Age, Total Working Years and Job Level, Total Working Years and Monthly Income, Monthly Income and Job Level, and Performance Rating and Percent Salary Hike. These pairs of highly correlated variables are important to keep in mind when building our models to classify attrition and predict monthly income.**
+
+**For our model to classify attrition, we will be using a NaiveBayes model, which is a very common model used for classification. First we put every single variable in the model (Except ID and Attrition) and used that to classify attrition as either a "Yes" or a "No". The results were a mixed bag.**
+```{r}
+set.seed(33)
+
+attrition <- mutate_if(attrition, is.character, as.factor)
+attrition <- mutate_if(attrition, is.integer, as.factor)
+
+trainIndices = sample(1:dim(attrition)[1],round(.7 * dim(attrition)[1]))
+train = attrition[trainIndices,]
+test = attrition[-trainIndices,]
+model = naiveBayes(train[,c(2,35)],as.factor(train$Attrition),laplace = 1)
+CM = confusionMatrix(table(predict(model,train[,c(2,35)]),as.factor(train$Attrition)))
+
+CM$overall[1] #Accuracy
+CM$byClass[1] #Sensitivity
+CM$byClass[2] #Specificity
+CM
+```
+**This initial Naive Bayes model to classify attrition using all of the possible explanatory variables (Seed = 33) achieved 84.73% accuracy, 98.93% Sensitivity, and 9.83% Specificity. This means with this model we did not hit our desired Sensitivity and Specificity thresholds of 60% each. Therefore, we must alter the initial Naive Bayes model to only include some of the explanatory variables.**
+
+**For the second pass of the model we began with just the variables that we identified from the correlation matrix as being correlated to attrition. Through experimentation of adding variables in the model and keeping them if they added to the accuracy, sensitivity, and specificity of our model we were able to generate a model that we feel is best for classifying attrition. We did get a slightly lower sensitivity, but this was expected.**
+```{r}
+set.seed(33)
+
+attrition <- mutate_if(attrition, is.character, as.factor)
+attrition <- mutate_if(attrition, is.integer, as.factor)
+
+trainIndices = sample(1:dim(attrition)[1],round(.7 * dim(attrition)[1]))
+train = attrition[trainIndices,]
+test = attrition[-trainIndices,]
+model = naiveBayes(train[,c('TotalWorkingYears','JobSatisfaction','YearsAtCompany','StockOptionLevel','MaritalStatus','WorkLifeBalance','NumCompaniesWorked','HourlyRate','YearsSinceLastPromotion','PercentSalaryHike','OverTime','YearsInCurrentRole')],as.factor(train$Attrition),laplace = 1)
+CM = confusionMatrix(table(predict(model,train[,c('JobSatisfaction','TotalWorkingYears','YearsAtCompany','StockOptionLevel','MaritalStatus','WorkLifeBalance','NumCompaniesWorked','HourlyRate','YearsSinceLastPromotion','PercentSalaryHike','OverTime','YearsInCurrentRole')]),as.factor(train$Attrition)))
+
+CM$overall[1] #Accuracy
+CM$byClass[1] #Sensitivity
+CM$byClass[2] #Specificity
+CM
+```
+**This model contains the following explanatory variables for classifying attrition: Total Working Years, Job Satisfaction, Years At Company, Stock Option Level, Marital Status, Work Life Balance, Number of Companies Worked, Hourly Rate, Years Since Last Promotion, Percent Salary Hike, Over Time, and Years in Current Role. This model achieved 90.97% accuracy, 95.71% sensitivity, and 65.62% specificity. It is clear that this is better than our original model and is the model that we feel is best at classifying attrition.**
+
+**To put our model to the test you provided us with a 300 observation data set with all of the same variables as the original 870 observation attrition data set, but without an attrition column. From this we classified each of the 300 observations as Attrition Yes/No using our Naive Bayes model.**
+```{r}
+set.seed(33)
+
+attrition <- mutate_if(attrition, is.character, as.factor)
+attrition <- mutate_if(attrition, is.integer, as.factor)
+
+trainIndices = sample(1:dim(attrition)[1],round(.7 * dim(attrition)[1]))
+train = attrition[trainIndices,]
+test = attrition[-trainIndices,]
+model = naiveBayes(train[,c('TotalWorkingYears','JobSatisfaction','YearsAtCompany','StockOptionLevel','MaritalStatus','WorkLifeBalance','NumCompaniesWorked','HourlyRate','YearsSinceLastPromotion','PercentSalaryHike','OverTime','YearsInCurrentRole')],as.factor(train$Attrition),laplace = 1)
+CM = confusionMatrix(table(predict(model,train[,c('JobSatisfaction','TotalWorkingYears','YearsAtCompany','StockOptionLevel','MaritalStatus','WorkLifeBalance','NumCompaniesWorked','HourlyRate','YearsSinceLastPromotion','PercentSalaryHike','OverTime','YearsInCurrentRole')]),as.factor(train$Attrition)))
+
+attrition_NA <- mutate_if(attrition_NA, is.character, as.factor)
+attrition_NA <- mutate_if(attrition_NA, is.integer, as.factor)
+
+AttritionPred <- predict(model, attrition_NA) 
+myout=cbind.data.frame(attrition_NA$ID,AttritionPred)
+colnames(myout) <- c("ID","Attrition")
+write.csv(myout, file ="/Users/reagan/Case2PredictionsMeagher Attrition.csv", row.names = FALSE)
+```
+**The results of running this model on your validation sample of data can be seen in the Case2PredictionsMeagher Attrition.csv file.**
+
+**The second model we were asked to produce is a regression model predicting monthly income using the same explanatory variables in the attrition data set. To do this I started with a custom selection model and found that Job Level and Total Working Years were the two best predictors of Monthly Income.**
+```{r}
+set.seed(33)
+
+trainIndices = sample(1:dim(attritionData)[1],round(.7 * dim(attritionData)[1]))
+train = attritionData[trainIndices,]
+test = attritionData[-trainIndices,]
+
+fit = lm(formula = MonthlyIncome ~ JobLevel + TotalWorkingYears, data = train)
+summary(fit)
+predictions <- predict(fit, test)
+RMSE(test$MonthlyIncome, predictions)
+
+SalaryPred <- predict(fit, attrition_NS) 
+myout=cbind.data.frame(attrition_NS$ID,SalaryPred)
+colnames(myout) <- c("ID","MonthlyIncome")
+write.csv(myout, file ="/Users/reagan/Case2PredictionsMeagher Salary.csv", row.names = FALSE)
+```
+**This model produced a .9154 R Squared value, which is a measure of how close our sample data is to the fitted regression line from our model. The closer an R Squared value is to 1, the better. Therefore it looks like the fit of our model is very good. Our model also achieves an RMSE of $1430.946, which is under our threshold of $3000. This is the desired outcome of the model.**
+
+**The final ask is to create visualizations to explore trends about job role specific relationships to a set of variables**
+```{r}
+ggplot(attritionData, aes(JobLevel, MonthlyIncome, color = JobRole))+
+  geom_point() +
+  geom_smooth(method=lm, se=TRUE, level = .95) + ggtitle("Monthly Income vs Job Level by Job Role") + xlab("Job Level") + ylab("Monthly Income")
+
+ggplot(attritionData, aes(x = JobSatisfaction, fill = JobRole))+ geom_bar() + ggtitle("Job Satisfaction by Job Role") + xlab("Job Satisfaction Rating") + ylab("Number of Observations")
+```
+
+**Looking at the Monthly Income vs Job Level by Job Role chart we can see that In each Job Role, you can only move up through so many Job Levels before needing to switch roles. There is not a Job Role that encompassess all five Job Levels. Looking at Job Satisfaction by Job Role we can see that there are a high percentage of Sales Executives with low Job Satisfaction, and that about 33% of the company has low Job Satisfaction (1 or 2).**
+
+**In conclusion**
+**We can see that there are many factors that influence attrition**
+**We have a model that can successfully classify attrition with a 90.97% accuracy**
+**We have a model that can predict Monthly Income**
+**We can see that within Frito Lay Job Role plays a big factor in Monthly Income and Job Satisfaction**
+
+**A video presentation of our finding can be seen at: https://www.youtube.com/watch?v=VKtVJfnjAtY&feature=youtu.be**
