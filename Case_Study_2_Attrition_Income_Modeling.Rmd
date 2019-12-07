@@ -44,11 +44,12 @@ attrition_NS = read.csv(file = "/Users/reagan/Case_Study_2_No_Salary.csv", heade
 ```{r}
 set.seed(33)
 
+attritionData <- attrition
+
 attritionData$AttritionN <- as.character(attritionData$Attrition)
 attritionData$AttritionN <- revalue(attritionData$AttritionN, c("Yes"="1"))
 attritionData$AttritionN <- revalue(attritionData$AttritionN, c("No"="2"))
 attritionData$Attrition2 <- as.integer(attritionData$AttritionN)
-attritionData
 
 df <- attritionData %>% keep(is.numeric)
 df.cor = cor(df)
